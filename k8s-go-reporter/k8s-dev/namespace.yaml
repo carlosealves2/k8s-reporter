@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8s-reporter
+  labels:
+    app: k8s-reporter
+    environment: production

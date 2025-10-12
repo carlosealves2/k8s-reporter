@@ -1,0 +1,18 @@
+FROM alpine:3.19
+
+WORKDIR /app
+
+# Install ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates
+
+# Copy the pre-compiled binary from local build
+COPY .tiltbuild/k8s-go-reporter /app/k8s-go-reporter
+
+# Make it executable
+RUN chmod +x /app/k8s-go-reporter
+
+# Expose port
+EXPOSE 50051
+
+# Run the application
+CMD ["/app/k8s-go-reporter"]

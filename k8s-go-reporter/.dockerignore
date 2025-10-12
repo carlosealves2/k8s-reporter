@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+*.o
+*.a
+*.so
+bin/
+build/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+README*
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Kubernetes manifests
+k8s/
+Tiltfile
+
+
+# Keep production Dockerfile out of dev builds
+!Dockerfile.dev
+
+internal/gen/

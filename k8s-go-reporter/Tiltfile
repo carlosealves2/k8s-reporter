@@ -1,0 +1,51 @@
+# -*- mode: Python -*-
+
+# Load restart_process extension
+load('ext://restart_process', 'docker_build_with_restart')
+
+# Load Kubernetes manifests
+k8s_yaml(['k8s-dev/namespace.yaml', 'k8s-dev/rbac.yaml', 'k8s-dev/deployment.yaml', 'k8s-dev/service.yaml'])
+
+# Generate protobuf files
+local_resource(
+  'proto-gen',
+  'protoc --go_out=. --go_opt=module=k8s-go-reporter --go-grpc_out=. --go-grpc_opt=module=k8s-go-reporter proto/k8sreporter/v1/k8s_reporter.proto',
+  deps=['./proto'],
+  labels=['codegen']
+)
+
+# Build settings
+compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o .tiltbuild/k8s-go-reporter ./cmd/server'
+
+# Local resource to compile the Go binary
+local_resource(
+  'k8s-go-reporter-compile',
+  compile_cmd,
+  deps=['./cmd', './internal/services', './internal/config', './internal/grpc', './internal/bootstrap', './internal/gen', './go.mod', './go.sum'],
+  resource_deps=['proto-gen']
+)
+
+# Docker build with live update and process restart
+# Uses lightweight Dockerfile.dev for faster iteration
+# The binary must exist before building, ensured by only including .tiltbuild
+docker_build_with_restart(
+  'k8s-go-reporter',
+  '.',
+  entrypoint='/app/k8s-go-reporter',
+  dockerfile='Dockerfile.dev',
+  only=['.tiltbuild/'],
+  live_update=[
+    sync('.tiltbuild/k8s-go-reporter', '/app/k8s-go-reporter'),
+  ]
+)
+
+# Resource configuration with port forwarding
+k8s_resource(
+  'k8s-go-reporter',
+  port_forwards='50051:50051',
+  resource_deps=['k8s-go-reporter-compile'],
+  labels=['backend']
+)
+
+# Settings
+update_settings(max_parallel_updates=3, k8s_upsert_timeout_secs=60)
