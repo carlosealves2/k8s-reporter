@@ -24,6 +24,8 @@ The project is built on a modern, scalable architecture consisting of three main
 
 The project is in active development. Currently, the **Cluster Data Collection Service** (k8s-go-reporter) has been implemented and is capable of gathering information from Kubernetes clusters.
 
+To testing pipeline in localhost use act, case whant test projeto, use make.
+
 **In Progress:**
 - GraphQL API development
 - Frontend web application
