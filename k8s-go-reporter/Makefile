@@ -75,6 +75,11 @@ vet: ## Run go vet
 lint: fmt vet ## Run formatters and linters
 	@echo "Linting complete"
 
+gosec: ## Run gosec security scanner
+	@echo "Running gosec security scanner..."
+	@gosec -exclude=G103 -exclude-generated -conf .gosec.json ./...
+	@echo "Security scan complete"
+
 test: ## Run tests
 	@echo "Running tests..."
 	@$(GOTEST) -v -race -coverprofile=coverage.out ./...
