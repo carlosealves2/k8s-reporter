@@ -62,6 +62,10 @@ jobs:
   security-scan:
     name: Security Scan (Gosec)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     defaults:
       run:
         working-directory: ./k8s-go-reporter
