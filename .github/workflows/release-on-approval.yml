@@ -1,0 +1,121 @@
+name: Create Release on PR Approval
+
+# 🚀 Executa quando uma revisão (review) de PR é submetida
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  create-release:
+    # 🔒 Só executa se:
+    # - o review foi aprovado
+    # - o PR está apontando para a branch develop
+    # - o PR contém mudanças no diretório k8s-go-reporter/**
+    if: |
+      github.event.review.state == 'approved' &&
+      github.event.pull_request.base.ref == 'develop'
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------
+      # 🧱 1. Checkout do código
+      # -----------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -----------------------
+      # 🧩 2. Detectar mudanças no diretório k8s-go-reporter/**
+      # -----------------------
+      - name: Check changed files
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            k8s_go_reporter:
+              - 'k8s-go-reporter/**'
+
+      # -----------------------
+      # 🔧 3. Configurar Git
+      # -----------------------
+      - name: Configure git
+        if: steps.changes.outputs.k8s_go_reporter == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # -----------------------
+      # 🧠 4. Determinar próxima versão semântica automaticamente
+      # -----------------------
+      - name: Determine next semantic version
+        if: steps.changes.outputs.k8s_go_reporter == 'true'
+        id: changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          output-file: false
+          skip-commit: true
+          skip-tag: true
+
+      - name: Show calculated version
+        if: steps.changes.outputs.k8s_go_reporter == 'true'
+        run: |
+          echo "🆕 Próxima versão detectada: ${{ steps.changelog.outputs.version }}"
+
+      # -----------------------
+      # 🌿 5. Criar branch de release
+      # -----------------------
+      - name: Create release branch
+        if: steps.changes.outputs.k8s_go_reporter == 'true' && steps.changelog.outputs.version != ''
+        run: |
+          version=${{ steps.changelog.outputs.version }}
+          branch="release/v${version}"
+          git checkout -b "$branch"
+
+      # -----------------------
+      # 📄 6. Atualizar arquivo de versão
+      # -----------------------
+      - name: Update version file
+        if: steps.changes.outputs.k8s_go_reporter == 'true' && steps.changelog.outputs.version != ''
+        run: |
+          echo "${{ steps.changelog.outputs.version }}" > k8s-go-reporter/version
+          git add k8s-go-reporter/version
+          git commit -m "chore(release): update version to v${{ steps.changelog.outputs.version }}"
+
+      # -----------------------
+      # 🏷️ 7. Criar tag
+      # -----------------------
+      - name: Create release tag
+        if: steps.changes.outputs.k8s_go_reporter == 'true' && steps.changelog.outputs.version != ''
+        run: |
+          version=${{ steps.changelog.outputs.version }}
+          git tag -a "v${version}" -m "Release v${version}"
+
+      # -----------------------
+      # 🚀 8. Push branch e tag
+      # -----------------------
+      - name: Push release branch and tag
+        if: steps.changes.outputs.k8s_go_reporter == 'true' && steps.changelog.outputs.version != ''
+        run: |
+          version=${{ steps.changelog.outputs.version }}
+          branch="release/v${version}"
+          git push origin "$branch"
+          git push origin "v${version}"
+
+      # -----------------------
+      # 📰 9. Criar release draft no GitHub
+      # -----------------------
+      - name: Create GitHub release draft
+        if: steps.changes.outputs.k8s_go_reporter == 'true' && steps.changelog.outputs.version != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.changelog.outputs.version }}
+          name: "Release v${{ steps.changelog.outputs.version }}"
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

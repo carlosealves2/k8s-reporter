@@ -1,0 +1,165 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'bugfix/**'
+    paths:
+      - 'k8s-go-reporter/**'
+  pull_request:
+    branches: [ develop ]
+    paths:
+      - 'k8s-go-reporter/**'
+
+env:
+  GO_VERSION: '1.24'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./k8s-go-reporter
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: k8s-go-reporter/go.sum
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install protoc Go plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Generate protobuf files
+        run: make proto
+
+      - name: Run tests
+        run: make test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./k8s-go-reporter/coverage.out
+          flags: unittests
+          name: codecov-umbrella
+
+  security-scan:
+    name: Security Scan (Gosec)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./k8s-go-reporter
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: k8s-go-reporter/go.sum
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install protoc Go plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate protobuf files
+        run: make proto
+
+      - name: Install Gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run Gosec Security Scanner
+        run: make gosec
+
+      - name: Run Gosec with SARIF output
+        if: ${{ !env.ACT }}
+        run: gosec -exclude=G103 -exclude-generated -fmt sarif -out gosec-results.sarif -conf .gosec.json ./...
+
+      - name: Upload Gosec results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: ${{ !env.ACT }}
+        with:
+          sarif_file: ./k8s-go-reporter/gosec-results.sarif
+
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: ./k8s-go-reporter
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for better analysis
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: k8s-go-reporter/go.sum
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install protoc Go plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Generate protobuf files
+        run: make proto
+
+      - name: Run tests with coverage
+        run: make test
+
+      - name: Read project version
+        id: version
+        run: echo "PROJECT_VERSION=$(cat version)" >> $GITHUB_OUTPUT
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          projectBaseDir: ./k8s-go-reporter
+          args: -Dsonar.projectVersion=${{ steps.version.outputs.PROJECT_VERSION }}
+
+      - name: SonarQube Quality Gate check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

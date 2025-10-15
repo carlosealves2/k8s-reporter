@@ -1,0 +1,8 @@
+{
+  "exclude": {
+    "G103": "Excluding unsafe calls in generated protobuf code"
+  },
+  "exclude-generated": true,
+  "severity": "medium",
+  "confidence": "medium"
+}
